@@ -27,6 +27,10 @@ def webhook():
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     body_text = request.get_data(as_text=True)
 
+    # Skip connection test requests - don't log these
+    if body_text.strip() == "connection_test":
+        return ('', 200)  # Respond OK but don't log
+
     # If body contains an 'Event Payload: {json}' or 'Single Event: {json}', store just that matched text
     patterns = [
         (re.compile(r'Single Event:\s*(\{.*\})', re.DOTALL), 'Single Event'),
@@ -40,8 +44,13 @@ def webhook():
             append_event(matched_text)
             return ('', 201)
 
-    # Fallback: store full request details as JSON
+    # Fallback: store full request details as JSON (but only if it's not a connection test)
     body_json = request.get_json(silent=True)
+    
+    # Additional check for JSON connection test
+    if body_json and body_json.get('test') == 'connection_test':
+        return ('', 200)  # Respond OK but don't log
+    
     event = {
         'timestamp': now,
         'method': request.method,

@@ -16,7 +16,7 @@ class AppConfig:
     """Application configuration data class"""
     # Server settings
     host: str = '0.0.0.0'
-    port: int = 5000
+    port: int = 5003
     debug: bool = True
     
     # Device monitoring settings
