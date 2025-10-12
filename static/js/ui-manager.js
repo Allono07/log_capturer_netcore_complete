@@ -35,6 +35,8 @@ class UIManager {
             stopBtn: document.getElementById('stop-btn'),
             downloadBtn: document.getElementById('download-btn'),
             testEndpointBtn: document.getElementById('test-endpoint-btn'),
+
+            testLogs: document.getElementById('logs-checker'),
             saveSettingsBtn: document.getElementById('save-settings-btn'),
             clearSettingsBtn: document.getElementById('clear-settings-btn'),
             
@@ -58,6 +60,11 @@ class UIManager {
     setupEventHandlers() {
         // Button click handlers
         this.elements.testEndpointBtn.addEventListener('click', () => this.testEndpoint());
+
+       this.elements.testLogs.addEventListener('click', () => {
+    alert('Please make sure you download the .txt logs file and upload your event sheet and logs on the event validation website');
+    window.open('https://validation-script-android-1.onrender.com/', '_blank'); // Replace with your actual URL
+});
         this.elements.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
         this.elements.clearSettingsBtn.addEventListener('click', () => this.clearSettings());
         this.elements.startBtn.addEventListener('click', () => this.startCapture());
@@ -74,7 +81,7 @@ class UIManager {
      */
     setupWebSocketHandlers() {
         this.webSocketManager.on('websocket_connected', () => {
-            this.showAlert('Connected to server', 'success');
+           this.showAlert('Connected to server', 'success');
         });
 
         this.webSocketManager.on('websocket_disconnected', () => {

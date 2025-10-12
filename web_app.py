@@ -89,11 +89,20 @@ def test_endpoint_connectivity(endpoint):
             timeout=5,
             headers={'Content-Type': 'text/plain'}
         )
-        return {
-            'success': True,
-            'status_code': response.status_code,
-            'message': f'Endpoint reachable (HTTP {response.status_code})'
-        }
+        if 200 <= response.status_code < 300:
+            # ✅ Success
+            return {
+                'success': True,
+                'status_code': response.status_code,
+                'message': f'Endpoint reachable (HTTP {response.status_code})'
+            }
+        else:
+            # ❌ Non-2xx status code
+            return {
+                'success': False,
+                'status_code': response.status_code,
+                'message': f'Endpoint not reachable (HTTP {response.status_code})'
+            }
     except requests.exceptions.Timeout:
         return {
             'success': False,
