@@ -284,13 +284,16 @@ class UIManager {
             if (result.success) {
                 this.showAlert(result.message, 'success');
                 this.updateEndpointStatus('success', 'Connected ✓', this.elements.bulkEndpointTestStatus);
+                this.elements.endpointStatusText.textContent = 'Bulk endpoint is reachable';
             } else {
                 this.showAlert(`Bulk endpoint test failed: ${result.message}`, 'danger');
                 this.updateEndpointStatus('error', 'Failed ✗', this.elements.bulkEndpointTestStatus);
+                this.elements.endpointStatusText.textContent = 'Bulk endpoint unreachable';
             }
         } catch (error) {
             this.showAlert(`Network error: ${error.message}`, 'danger');
             this.updateEndpointStatus('error', 'Error ✗', this.elements.bulkEndpointTestStatus);
+            this.elements.endpointStatusText.textContent = 'Bulk endpoint error';
         } finally {
             this.resetButtonLoading(this.elements.testBulkEndpointBtn, '🔍 Test Bulk');
         }
@@ -454,8 +457,8 @@ class UIManager {
      * Update bulk count display
      */
     updateBulkCount(count) {
-        this.elements.bulkCount.textContent = count;
-        this.updateBulkButtonStates(count > 0);
+        // this.elements.bulkCount.textContent = count;
+        // this.updateBulkButtonStates(count > 0);
     }
 
     /**
@@ -480,7 +483,7 @@ class UIManager {
         } catch (error) {
             this.showAlert(`Error publishing bulk data: ${error.message}`, 'danger');
         } finally {
-            this.resetButtonLoading(this.elements.bulkPublishBtn, '📦 Publish Bulk (0 events)');
+            this.resetButtonLoading(this.elements.bulkPublishBtn, '📦 Publish Bulk '+result.published_count);
         }
     }
 

@@ -105,12 +105,21 @@
             border-color: #fc5e02;
         }
 
-        .button-group {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
+      .button-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center; /* Center align horizontally */
+    gap: 20px; /* Space between groups */
+    margin-top: 20px;
+}
+
+/* Each group itself stays as a horizontal row */
+.button-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center; /* Center buttons inside each group */
+}
 
         button {
             padding: 12px 24px;
@@ -360,7 +369,36 @@
                     </select>
                 </div>
 
-                <div class="button-group">
+                <div class="form-group">
+                    <label for="log-file">📁 Upload Log File (For Cloud Deployment):</label>
+                    <input type="file" id="log-file" accept=".txt,.log" style="margin-bottom: 10px;">
+                    <button id="upload-logs-btn" class="btn-info" disabled>📤 Upload & Process Logs</button>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Alternative to ADB capture for cloud deployments
+                    </small>
+                </div>
+
+                <div class="button-container">
+    <div class="button-group">
+        <button id="test-endpoint-btn" class="btn-info">🔍 Test Realtime</button>
+        <button id="test-bulk-endpoint-btn" class="btn-info">🔍 Test Bulk</button>
+        <button id="save-settings-btn" class="btn-secondary">💾 Save Settings</button>
+        <button id="clear-settings-btn" class="btn-warning">🗑️ Clear Settings</button>
+
+        <button id="start-btn" class="btn-success">▶️ Start Capturing</button>
+        <button id="stop-btn" class="btn-danger" disabled>⏹️ Stop Capturing</button>
+        <button id="download-btn" class="btn-primary">📥 Download Logs</button>
+
+        <button id="bulk-publish-btn" class="btn-primary" disabled>
+            📦 Publish Bulk 
+        </button>
+        <button id="clear-bulk-btn" class="btn-warning" disabled>🗑️ Clear Bulk</button>
+        <button id="preview-bulk-btn" class="btn-info" disabled>👁️ Preview Bulk</button>
+    </div>
+</div>
+
+
+                <!-- <div class="button-group">
                     <button id="test-endpoint-btn" class="btn-info">
                         🔍 Test Realtime
                     </button>
@@ -397,7 +435,7 @@
                     <button id="preview-bulk-btn" class="btn-info" disabled>
                         👁️ Preview Bulk
                     </button>
-                </div>
+                </div> -->
             </div>
 
             <!-- Logs Card -->

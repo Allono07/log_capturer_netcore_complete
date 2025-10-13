@@ -463,20 +463,20 @@ def bulk_publish():
         return jsonify({'success': False, 'message': 'No logs to publish'})
     
     try:
-        # Prepare bulk data
-        bulk_data = {
-            'timestamp': datetime.now().isoformat(),
-            'total_events': len(bulk_logs),
-            'events': bulk_logs,
-            'mode': current_mode,
-            'source': 'Android Log Capturer'
-        }
+        # Prepare bulk data in the same format as continuous pushing
+        # Just send the matched_text from each log, one per line
+        bulk_data_lines = []
+        for log in bulk_logs:
+            bulk_data_lines.append(log['matched_text'])
         
-        # Send to bulk endpoint
+        # Join with newlines to create the payload
+        bulk_payload = '\n'.join(bulk_data_lines)
+        
+        # Send to bulk endpoint as plain text (same as continuous mode)
         response = requests.post(
             current_bulk_endpoint,
-            json=bulk_data,
-            headers={'Content-Type': 'application/json'},
+            data=bulk_payload,
+            headers={'Content-Type': 'text/plain'},
             timeout=30
         )
         
@@ -511,6 +511,70 @@ def bulk_publish():
         return jsonify({'success': False, 'message': 'Cannot connect to bulk endpoint'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error publishing bulk data: {str(e)}'})
+
+@app.route('/api/upload-logs', methods=['POST'])
+def upload_logs():
+    """Upload and process log file for cloud deployment."""
+    if 'logfile' not in request.files:
+        return jsonify({'success': False, 'message': 'No log file provided'})
+    
+    file = request.files['logfile']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'})
+    
+    try:
+        # Read and process the uploaded log content
+        content = file.read().decode('utf-8')
+        lines = content.split('\n')
+        
+        processed_count = 0
+        for line in lines:
+            line = line.strip()
+            if line:
+                # Process each line like we do with ADB output
+                for pattern, label in patterns:
+                    match = pattern.search(line)
+                    if match:
+                        matched_text = f"{label}: {match.group(1)}"
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # Store for bulk publishing
+                        bulk_log_entry = {
+                            'timestamp': timestamp,
+                            'matched_text': matched_text,
+                            'parsed_event': None,
+                            'iso_timestamp': datetime.now().isoformat()
+                        }
+                        
+                        try:
+                            bulk_log_entry['parsed_event'] = json.loads(match.group(1))
+                        except:
+                            pass
+                        
+                        bulk_logs.append(bulk_log_entry)
+                        processed_count += 1
+                        
+                        # Send to realtime endpoint if configured
+                        if current_endpoint:
+                            if current_mode in ("raw", "both"):
+                                send_raw(matched_text, current_endpoint)
+        
+        # Emit update to WebSocket clients
+        socketio.emit('logs_uploaded', {
+            'processed_count': processed_count,
+            'total_bulk_count': len(bulk_logs),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed {processed_count} log events',
+            'processed_count': processed_count,
+            'total_bulk_count': len(bulk_logs)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing log file: {str(e)}'})
 
 @app.route('/api/bulk-logs', methods=['GET'])
 def get_bulk_logs():
