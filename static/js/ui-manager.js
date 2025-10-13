@@ -28,6 +28,7 @@ class UIManager {
         this.elements = {
             // Form elements
             endpointInput: document.getElementById('endpoint'),
+            bulkEndpointInput: document.getElementById('bulk-endpoint'),
             modeSelect: document.getElementById('mode'),
             
             // Buttons
@@ -35,7 +36,10 @@ class UIManager {
             stopBtn: document.getElementById('stop-btn'),
             downloadBtn: document.getElementById('download-btn'),
             testEndpointBtn: document.getElementById('test-endpoint-btn'),
-
+            testBulkEndpointBtn: document.getElementById('test-bulk-endpoint-btn'),
+            bulkPublishBtn: document.getElementById('bulk-publish-btn'),
+            clearBulkBtn: document.getElementById('clear-bulk-btn'),
+            previewBulkBtn: document.getElementById('preview-bulk-btn'),
             testLogs: document.getElementById('logs-checker'),
             saveSettingsBtn: document.getElementById('save-settings-btn'),
             clearSettingsBtn: document.getElementById('clear-settings-btn'),
@@ -47,6 +51,8 @@ class UIManager {
             captureStatusText: document.getElementById('capture-status-text'),
             endpointStatusText: document.getElementById('endpoint-status-text'),
             endpointTestStatus: document.getElementById('endpoint-test-status'),
+            bulkEndpointTestStatus: document.getElementById('bulk-endpoint-test-status'),
+            bulkCount: document.getElementById('bulk-count'),
             
             // Containers
             logsContainer: document.getElementById('logs-container'),
@@ -60,6 +66,10 @@ class UIManager {
     setupEventHandlers() {
         // Button click handlers
         this.elements.testEndpointBtn.addEventListener('click', () => this.testEndpoint());
+        this.elements.testBulkEndpointBtn.addEventListener('click', () => this.testBulkEndpoint());
+        this.elements.bulkPublishBtn.addEventListener('click', () => this.bulkPublish());
+        this.elements.clearBulkBtn.addEventListener('click', () => this.clearBulkLogs());
+        this.elements.previewBulkBtn.addEventListener('click', () => this.previewBulkLogs());
 
        this.elements.testLogs.addEventListener('click', () => {
     alert('Please make sure you download the .txt logs file and upload your event sheet and logs on the event validation website');
@@ -73,6 +83,7 @@ class UIManager {
 
         // Auto-save settings when changed
         this.elements.endpointInput.addEventListener('change', () => this.saveSettings());
+        this.elements.bulkEndpointInput.addEventListener('change', () => this.saveSettings());
         this.elements.modeSelect.addEventListener('change', () => this.saveSettings());
     }
 
@@ -102,6 +113,14 @@ class UIManager {
 
         this.webSocketManager.on('settings_loaded', (settings) => {
             this.loadSettings(settings);
+        });
+
+        this.webSocketManager.on('bulk_publish_result', (data) => {
+            this.handleBulkPublishResult(data);
+        });
+
+        this.webSocketManager.on('bulk_logs_cleared', (data) => {
+            this.handleBulkLogsCleared(data);
         });
     }
 
@@ -206,8 +225,10 @@ class UIManager {
      */
     loadSettings(settings) {
         this.elements.endpointInput.value = settings.endpoint || '';
+        this.elements.bulkEndpointInput.value = settings.bulk_endpoint || '';
         this.elements.modeSelect.value = settings.mode || 'raw';
         this.currentEndpoint = settings.endpoint || '';
+        this.currentBulkEndpoint = settings.bulk_endpoint || '';
         this.currentMode = settings.mode || 'raw';
     }
 
@@ -217,40 +238,72 @@ class UIManager {
     async testEndpoint() {
         const endpoint = this.elements.endpointInput.value.trim();
         if (!endpoint) {
-            this.showAlert('Please enter an endpoint URL', 'danger');
+            this.showAlert('Please enter a realtime endpoint URL', 'danger');
             return;
         }
 
         this.setButtonLoading(this.elements.testEndpointBtn, 'Testing...');
-        this.updateEndpointStatus('testing', 'Testing...');
+        this.updateEndpointStatus('testing', 'Testing...', this.elements.endpointTestStatus);
 
         try {
-            const result = await this.apiClient.testEndpoint(endpoint);
+            const result = await this.apiClient.testEndpoint(endpoint, 'realtime');
             
             if (result.success) {
                 this.showAlert(result.message, 'success');
-                this.updateEndpointStatus('success', 'Connected ✓');
-                this.elements.endpointStatusText.textContent = 'Endpoint is reachable';
+                this.updateEndpointStatus('success', 'Connected ✓', this.elements.endpointTestStatus);
+                this.elements.endpointStatusText.textContent = 'Realtime endpoint is reachable';
             } else {
-                this.showAlert(`Endpoint test failed: ${result.message}`, 'danger');
-                this.updateEndpointStatus('error', 'Failed ✗');
-                this.elements.endpointStatusText.textContent = 'Endpoint unreachable';
+                this.showAlert(`Realtime endpoint test failed: ${result.message}`, 'danger');
+                this.updateEndpointStatus('error', 'Failed ✗', this.elements.endpointTestStatus);
+                this.elements.endpointStatusText.textContent = 'Realtime endpoint unreachable';
             }
         } catch (error) {
             this.showAlert(`Network error: ${error.message}`, 'danger');
-            this.updateEndpointStatus('error', 'Error ✗');
+            this.updateEndpointStatus('error', 'Error ✗', this.elements.endpointTestStatus);
         } finally {
-            this.resetButtonLoading(this.elements.testEndpointBtn, '🔍 Test Endpoint');
+            this.resetButtonLoading(this.elements.testEndpointBtn, '🔍 Test Realtime');
+        }
+    }
+
+    /**
+     * Test bulk endpoint connectivity
+     */
+    async testBulkEndpoint() {
+        const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
+        if (!bulkEndpoint) {
+            this.showAlert('Please enter a bulk endpoint URL', 'danger');
+            return;
+        }
+
+        this.setButtonLoading(this.elements.testBulkEndpointBtn, 'Testing...');
+        this.updateEndpointStatus('testing', 'Testing...', this.elements.bulkEndpointTestStatus);
+
+        try {
+            const result = await this.apiClient.testEndpoint(bulkEndpoint, 'bulk');
+            
+            if (result.success) {
+                this.showAlert(result.message, 'success');
+                this.updateEndpointStatus('success', 'Connected ✓', this.elements.bulkEndpointTestStatus);
+            } else {
+                this.showAlert(`Bulk endpoint test failed: ${result.message}`, 'danger');
+                this.updateEndpointStatus('error', 'Failed ✗', this.elements.bulkEndpointTestStatus);
+            }
+        } catch (error) {
+            this.showAlert(`Network error: ${error.message}`, 'danger');
+            this.updateEndpointStatus('error', 'Error ✗', this.elements.bulkEndpointTestStatus);
+        } finally {
+            this.resetButtonLoading(this.elements.testBulkEndpointBtn, '🔍 Test Bulk');
         }
     }
 
     /**
      * Update endpoint status indicator
      */
-    updateEndpointStatus(status, text) {
-        this.elements.endpointTestStatus.className = `endpoint-status ${status}`;
-        this.elements.endpointTestStatus.textContent = text;
-        this.elements.endpointTestStatus.classList.remove('hidden');
+    updateEndpointStatus(status, text, element = null) {
+        const statusElement = element || this.elements.endpointTestStatus;
+        statusElement.className = `endpoint-status ${status}`;
+        statusElement.textContent = text;
+        statusElement.classList.remove('hidden');
     }
 
     /**
@@ -258,14 +311,20 @@ class UIManager {
      */
     async saveSettings() {
         const endpoint = this.elements.endpointInput.value.trim();
+        const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
 
         try {
-            const result = await this.apiClient.saveSettings({ endpoint, mode });
+            const result = await this.apiClient.saveSettings({ 
+                endpoint, 
+                bulk_endpoint: bulkEndpoint, 
+                mode 
+            });
             
             if (result.success) {
                 this.showAlert('Settings saved successfully', 'success');
                 this.currentEndpoint = endpoint;
+                this.currentBulkEndpoint = bulkEndpoint;
                 this.currentMode = mode;
             } else {
                 this.showAlert(`Failed to save settings: ${result.message}`, 'danger');
@@ -289,10 +348,13 @@ class UIManager {
             if (result.success) {
                 this.showAlert('Settings cleared successfully', 'success');
                 this.elements.endpointInput.value = '';
+                this.elements.bulkEndpointInput.value = '';
                 this.elements.modeSelect.value = 'raw';
                 this.currentEndpoint = '';
+                this.currentBulkEndpoint = '';
                 this.currentMode = 'raw';
                 this.elements.endpointTestStatus.classList.add('hidden');
+                this.elements.bulkEndpointTestStatus.classList.add('hidden');
                 this.elements.endpointStatusText.textContent = 'Not tested';
             } else {
                 this.showAlert(`Failed to clear settings: ${result.message}`, 'danger');
@@ -307,21 +369,23 @@ class UIManager {
      */
     async startCapture() {
         const endpoint = this.elements.endpointInput.value.trim();
+        const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
 
-        if (!endpoint) {
-            this.showAlert('Please enter an endpoint URL', 'danger');
+        if (!endpoint && !bulkEndpoint) {
+            this.showAlert('Please enter at least one endpoint URL (realtime or bulk)', 'danger');
             return;
         }
 
         this.setButtonLoading(this.elements.startBtn, 'Starting...');
 
         try {
-            const result = await this.apiClient.startCapture(endpoint, mode);
+            const result = await this.apiClient.startCapture(endpoint, bulkEndpoint, mode);
             
             if (result.success) {
                 this.showAlert(result.message, 'success');
                 this.updateCaptureStatus(true);
+                this.updateBulkButtonStates(true);
             } else {
                 this.showAlert(result.message, 'danger');
             }
@@ -378,6 +442,119 @@ class UIManager {
     }
 
     /**
+     * Update bulk button states
+     */
+    updateBulkButtonStates(hasData) {
+        this.elements.bulkPublishBtn.disabled = !hasData;
+        this.elements.clearBulkBtn.disabled = !hasData;
+        this.elements.previewBulkBtn.disabled = !hasData;
+    }
+
+    /**
+     * Update bulk count display
+     */
+    updateBulkCount(count) {
+        this.elements.bulkCount.textContent = count;
+        this.updateBulkButtonStates(count > 0);
+    }
+
+    /**
+     * Bulk publish logs
+     */
+    async bulkPublish() {
+        if (!confirm('Are you sure you want to publish all accumulated logs to the bulk endpoint?')) {
+            return;
+        }
+
+        this.setButtonLoading(this.elements.bulkPublishBtn, 'Publishing...');
+
+        try {
+            const result = await this.apiClient.bulkPublish();
+            
+            if (result.success) {
+                this.showAlert(`Successfully published ${result.published_count} events`, 'success');
+                this.updateBulkCount(0);
+            } else {
+                this.showAlert(`Bulk publish failed: ${result.message}`, 'danger');
+            }
+        } catch (error) {
+            this.showAlert(`Error publishing bulk data: ${error.message}`, 'danger');
+        } finally {
+            this.resetButtonLoading(this.elements.bulkPublishBtn, '📦 Publish Bulk (0 events)');
+        }
+    }
+
+    /**
+     * Clear bulk logs
+     */
+    async clearBulkLogs() {
+        if (!confirm('Are you sure you want to clear all accumulated bulk logs?')) {
+            return;
+        }
+
+        try {
+            const result = await this.apiClient.clearBulkLogs();
+            
+            if (result.success) {
+                this.showAlert(`Cleared ${result.cleared_count} bulk logs`, 'success');
+                this.updateBulkCount(0);
+            } else {
+                this.showAlert(`Failed to clear bulk logs: ${result.message}`, 'danger');
+            }
+        } catch (error) {
+            this.showAlert(`Error clearing bulk logs: ${error.message}`, 'danger');
+        }
+    }
+
+    /**
+     * Preview bulk logs
+     */
+    async previewBulkLogs() {
+        try {
+            const result = await this.apiClient.getBulkLogs();
+            
+            if (result.total_count === 0) {
+                this.showAlert('No bulk logs to preview', 'info');
+                return;
+            }
+
+            // Create preview modal or alert
+            const preview = result.logs.slice(0, 5).map(log => 
+                `${log.timestamp}: ${log.matched_text.substring(0, 100)}...`
+            ).join('\n\n');
+            
+            const message = `Bulk Logs Preview (${result.total_count} total, showing first 5):\n\n${preview}`;
+            if (result.has_more) {
+                message += `\n\n... and ${result.total_count - 5} more events`;
+            }
+            
+            alert(message);
+        } catch (error) {
+            this.showAlert(`Error previewing bulk logs: ${error.message}`, 'danger');
+        }
+    }
+
+    /**
+     * Handle bulk publish result from WebSocket
+     */
+    handleBulkPublishResult(data) {
+        if (data.success) {
+            this.showAlert(`Bulk publish successful: ${data.published_count} events`, 'success');
+            this.updateBulkCount(0);
+        } else {
+            this.showAlert('Bulk publish failed', 'danger');
+        }
+    }
+
+    /**
+     * Handle bulk logs cleared from WebSocket
+     */
+    handleBulkLogsCleared(data) {
+        this.showAlert(`Bulk logs cleared: ${data.cleared_count} events`, 'info');
+        this.updateBulkCount(0);
+    }
+
+    /**
      * Initialize UI on page load
      */
     initialize() {
@@ -385,6 +562,9 @@ class UIManager {
         if (this.elements.endpointInput.value.trim()) {
             setTimeout(() => this.testEndpoint(), 1000);
         }
+        
+        // Initialize bulk count
+        this.updateBulkCount(0);
     }
 }
 

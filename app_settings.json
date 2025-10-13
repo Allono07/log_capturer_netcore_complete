@@ -1,4 +1,5 @@
 {
-  "endpoint": "https://webhook.site/01c5849b-d08c-4eb6-baca-e3241df8ffdd",
+  "endpoint": "",
+  "bulk_endpoint": "https://webhook.site/01c5849b-d08c-4eb6-baca-e3241df8ffdd",
   "mode": "raw"
 }

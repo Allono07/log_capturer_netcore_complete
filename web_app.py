@@ -25,8 +25,10 @@ device_monitor_thread = None
 is_capturing = False
 is_monitoring_device = False
 current_endpoint = ""
+current_bulk_endpoint = ""
 current_mode = "raw"
 log_queue = queue.Queue()
+bulk_logs = []  # Store logs for bulk publishing
 
 # File to store logs locally
 LOG_FILE = "android_events.txt"
@@ -42,6 +44,7 @@ def load_settings():
     """Load persistent settings from file."""
     default_settings = {
         'endpoint': '',
+        'bulk_endpoint': '',
         'mode': 'raw'
     }
     
@@ -55,10 +58,11 @@ def load_settings():
     
     return default_settings
 
-def save_settings(endpoint, mode):
+def save_settings(endpoint, bulk_endpoint, mode):
     """Save settings to file."""
     settings = {
         'endpoint': endpoint,
+        'bulk_endpoint': bulk_endpoint,
         'mode': mode
     }
     
@@ -137,6 +141,8 @@ def send_json(obj: dict, endpoint: str):
 
 def process_line(line: str, endpoint: str, mode: str):
     """Process a single decoded log line: match, log locally, and forward to endpoint."""
+    global bulk_logs
+    
     for pattern, label in patterns:
         match = pattern.search(line)
         if not match:
@@ -157,14 +163,24 @@ def process_line(line: str, endpoint: str, mode: str):
         except Exception:
             parsed = None
 
+        # Send to real-time webhook endpoint
         results = []
-        if mode in ("raw", "both"):
+        if endpoint and mode in ("raw", "both"):
             status, body = send_raw(matched_text, endpoint)
             results.append(("raw", status, body))
 
-        if mode in ("json", "both") and parsed is not None:
+        if endpoint and mode in ("json", "both") and parsed is not None:
             status, body = send_json(parsed, endpoint)
             results.append(("json", status, body))
+
+        # Store for bulk publishing
+        bulk_log_entry = {
+            'timestamp': timestamp,
+            'matched_text': matched_text,
+            'parsed_event': parsed,
+            'iso_timestamp': datetime.now().isoformat()
+        }
+        bulk_logs.append(bulk_log_entry)
 
         # Send results to web interface via WebSocket
         event_data = {
@@ -279,7 +295,8 @@ def index():
     # Load persistent settings
     settings = load_settings()
     return render_template('index.html', 
-                         endpoint=settings['endpoint'], 
+                         endpoint=settings['endpoint'],
+                         bulk_endpoint=settings['bulk_endpoint'], 
                          mode=settings['mode'])
 
 @app.route('/api/settings', methods=['GET'])
@@ -292,11 +309,13 @@ def update_settings():
     """Update persistent settings."""
     data = request.get_json()
     endpoint = data.get('endpoint', '').strip()
+    bulk_endpoint = data.get('bulk_endpoint', '').strip()
     mode = data.get('mode', 'raw')
     
-    if save_settings(endpoint, mode):
-        global current_endpoint, current_mode
+    if save_settings(endpoint, bulk_endpoint, mode):
+        global current_endpoint, current_bulk_endpoint, current_mode
         current_endpoint = endpoint
+        current_bulk_endpoint = bulk_endpoint
         current_mode = mode
         return jsonify({'success': True, 'message': 'Settings saved'})
     else:
@@ -306,8 +325,9 @@ def update_settings():
 def clear_persistent_settings():
     """Clear all persistent settings."""
     if clear_settings():
-        global current_endpoint, current_mode
+        global current_endpoint, current_bulk_endpoint, current_mode
         current_endpoint = ""
+        current_bulk_endpoint = ""
         current_mode = "raw"
         return jsonify({'success': True, 'message': 'Settings cleared'})
     else:
@@ -318,38 +338,47 @@ def test_endpoint():
     """Test endpoint connectivity."""
     data = request.get_json()
     endpoint = data.get('endpoint', '').strip()
+    endpoint_type = data.get('type', 'realtime')  # 'realtime' or 'bulk'
     
     if not endpoint:
         return jsonify({'success': False, 'message': 'Please provide an endpoint URL'})
     
     result = test_endpoint_connectivity(endpoint)
+    result['endpoint_type'] = endpoint_type
     return jsonify(result)
 
 @app.route('/api/start', methods=['POST'])
 def start_capture():
     """Start log capture."""
-    global is_capturing, capture_thread, current_endpoint, current_mode
+    global is_capturing, capture_thread, current_endpoint, current_bulk_endpoint, current_mode, bulk_logs
     
     if is_capturing:
         return jsonify({'success': False, 'message': 'Already capturing logs'})
     
     data = request.get_json()
     endpoint = data.get('endpoint', '').strip()
+    bulk_endpoint = data.get('bulk_endpoint', '').strip()
     mode = data.get('mode', 'raw')
     
-    if not endpoint:
-        return jsonify({'success': False, 'message': 'Please provide an endpoint URL'})
+    # At least one endpoint should be provided
+    if not endpoint and not bulk_endpoint:
+        return jsonify({'success': False, 'message': 'Please provide at least one endpoint URL'})
     
-    # Test the endpoint first
-    test_result = test_endpoint_connectivity(endpoint)
-    if not test_result['success']:
-        return jsonify({'success': False, 'message': f'Endpoint test failed: {test_result["message"]}'})
+    # Test the realtime endpoint if provided
+    if endpoint:
+        test_result = test_endpoint_connectivity(endpoint)
+        if not test_result['success']:
+            return jsonify({'success': False, 'message': f'Realtime endpoint test failed: {test_result["message"]}'})
     
     current_endpoint = endpoint
+    current_bulk_endpoint = bulk_endpoint
     current_mode = mode
     
+    # Clear previous bulk logs
+    bulk_logs = []
+    
     # Save settings for persistence
-    save_settings(endpoint, mode)
+    save_settings(endpoint, bulk_endpoint, mode)
     
     is_capturing = True
     
@@ -381,9 +410,11 @@ def get_status():
     return jsonify({
         'is_capturing': is_capturing,
         'endpoint': current_endpoint,
+        'bulk_endpoint': current_bulk_endpoint,
         'mode': current_mode,
         'device_connected': device_connected,
-        'devices': device_info
+        'devices': device_info,
+        'bulk_logs_count': len(bulk_logs)
     })
 
 @app.route('/api/device-status', methods=['GET'])
@@ -420,6 +451,95 @@ def download_logs():
     else:
         return jsonify({'error': 'Log file not found'}), 404
 
+@app.route('/api/bulk-publish', methods=['POST'])
+def bulk_publish():
+    """Publish all accumulated logs to bulk endpoint."""
+    global bulk_logs, current_bulk_endpoint, current_mode
+    
+    if not current_bulk_endpoint:
+        return jsonify({'success': False, 'message': 'No bulk endpoint configured'})
+    
+    if not bulk_logs:
+        return jsonify({'success': False, 'message': 'No logs to publish'})
+    
+    try:
+        # Prepare bulk data
+        bulk_data = {
+            'timestamp': datetime.now().isoformat(),
+            'total_events': len(bulk_logs),
+            'events': bulk_logs,
+            'mode': current_mode,
+            'source': 'Android Log Capturer'
+        }
+        
+        # Send to bulk endpoint
+        response = requests.post(
+            current_bulk_endpoint,
+            json=bulk_data,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        
+        if 200 <= response.status_code < 300:
+            published_count = len(bulk_logs)
+            bulk_logs = []  # Clear after successful publish
+            
+            # Emit success to WebSocket
+            socketio.emit('bulk_publish_result', {
+                'success': True,
+                'published_count': published_count,
+                'status_code': response.status_code,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            return jsonify({
+                'success': True,
+                'message': f'Successfully published {published_count} events',
+                'published_count': published_count,
+                'status_code': response.status_code
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Bulk endpoint returned HTTP {response.status_code}',
+                'status_code': response.status_code
+            })
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'message': 'Bulk endpoint timeout'})
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'message': 'Cannot connect to bulk endpoint'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error publishing bulk data: {str(e)}'})
+
+@app.route('/api/bulk-logs', methods=['GET'])
+def get_bulk_logs():
+    """Get current bulk logs for preview."""
+    return jsonify({
+        'total_count': len(bulk_logs),
+        'logs': bulk_logs[-10:] if bulk_logs else [],  # Last 10 for preview
+        'has_more': len(bulk_logs) > 10
+    })
+
+@app.route('/api/bulk-logs/clear', methods=['POST'])
+def clear_bulk_logs():
+    """Clear all accumulated bulk logs."""
+    global bulk_logs
+    
+    cleared_count = len(bulk_logs)
+    bulk_logs = []
+    
+    socketio.emit('bulk_logs_cleared', {
+        'cleared_count': cleared_count,
+        'timestamp': datetime.now().isoformat()
+    })
+    
+    return jsonify({
+        'success': True,
+        'message': f'Cleared {cleared_count} bulk logs',
+        'cleared_count': cleared_count
+    })
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection."""
@@ -454,12 +574,15 @@ if __name__ == '__main__':
     # Load initial settings
     settings = load_settings()
     current_endpoint = settings['endpoint']
+    current_bulk_endpoint = settings['bulk_endpoint']
     current_mode = settings['mode']
     
     print("🚀 Starting Android Log Capturer Web Application")
     print("📱 Make sure your Android device is connected and USB debugging is enabled")
     print("🌐 Open your browser and go to: http://localhost:5002")
     if settings['endpoint']:
-        print(f"📡 Loaded saved endpoint: {settings['endpoint']}")
+        print(f"📡 Loaded saved realtime endpoint: {settings['endpoint']}")
+    if settings['bulk_endpoint']:
+        print(f"📦 Loaded saved bulk endpoint: {settings['bulk_endpoint']}")
     
     socketio.run(app, host='0.0.0.0', port=5002, debug=True, allow_unsafe_werkzeug=True)

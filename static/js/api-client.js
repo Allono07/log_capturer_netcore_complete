@@ -41,10 +41,14 @@ class APIClient {
     /**
      * Start log capture
      */
-    async startCapture(endpoint, mode) {
+    async startCapture(endpoint, bulkEndpoint, mode) {
         return this.makeRequest('/api/start', {
             method: 'POST',
-            body: JSON.stringify({ endpoint, mode })
+            body: JSON.stringify({ 
+                endpoint, 
+                bulk_endpoint: bulkEndpoint, 
+                mode 
+            })
         });
     }
 
@@ -74,10 +78,10 @@ class APIClient {
     /**
      * Test webhook endpoint connectivity
      */
-    async testEndpoint(endpoint) {
+    async testEndpoint(endpoint, type = 'realtime') {
         return this.makeRequest('/api/test-endpoint', {
             method: 'POST',
-            body: JSON.stringify({ endpoint })
+            body: JSON.stringify({ endpoint, type })
         });
     }
 
@@ -105,6 +109,31 @@ class APIClient {
      */
     downloadLogs() {
         window.open('/api/download', '_blank');
+    }
+
+    /**
+     * Publish bulk logs
+     */
+    async bulkPublish() {
+        return this.makeRequest('/api/bulk-publish', {
+            method: 'POST'
+        });
+    }
+
+    /**
+     * Get bulk logs for preview
+     */
+    async getBulkLogs() {
+        return this.makeRequest('/api/bulk-logs');
+    }
+
+    /**
+     * Clear bulk logs
+     */
+    async clearBulkLogs() {
+        return this.makeRequest('/api/bulk-logs/clear', {
+            method: 'POST'
+        });
     }
 }
 

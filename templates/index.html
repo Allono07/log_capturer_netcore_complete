@@ -340,23 +340,32 @@
                 <h2 style="background: #230f2e; color: white; margin: -20px -20px 20px -20px; padding: 15px; border-radius: 10px 10px 0 0;">⚙️ Configuration</h2>
                 
                 <div class="form-group">
-                    <label for="endpoint">Webhook Endpoint URL:</label>
+                    <label for="endpoint">Realtime Webhook URL (Optional):</label>
                     <input type="text" id="endpoint" placeholder="https://your-webhook-endpoint.com/webhook" value="{{ endpoint or '' }}">
                     <span id="endpoint-test-status" class="endpoint-status hidden"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="bulk-endpoint">Bulk Publish Webhook URL (Optional):</label>
+                    <input type="text" id="bulk-endpoint" placeholder="https://your-bulk-endpoint.com/bulk" value="{{ bulk_endpoint or '' }}">
+                    <span id="bulk-endpoint-test-status" class="endpoint-status hidden"></span>
                 </div>
 
                 <div class="form-group">
                     <label for="mode">Send Mode:</label>
                     <select id="mode">
                         <option value="raw" {{ 'selected' if mode == 'raw' else '' }}>Raw Text</option>
-                        <option value="json" {{ 'selected' if mode == 'json' else '' }}>JSON</option>
-                        <option value="both" {{ 'selected' if mode == 'both' else '' }}>Both</option>
+                        <!-- <option value="json" {{ 'selected' if mode == 'json' else '' }}>JSON</option>
+                        <option value="both" {{ 'selected' if mode == 'both' else '' }}>Both</option> -->
                     </select>
                 </div>
 
                 <div class="button-group">
                     <button id="test-endpoint-btn" class="btn-info">
-                        🔍 Test Endpoint
+                        🔍 Test Realtime
+                    </button>
+                    <button id="test-bulk-endpoint-btn" class="btn-info">
+                        🔍 Test Bulk
                     </button>
                     <button id="save-settings-btn" class="btn-secondary">
                         💾 Save Settings
@@ -364,7 +373,9 @@
                     <button id="clear-settings-btn" class="btn-warning">
                         🗑️ Clear Settings
                     </button>
-             
+                </div>
+                
+                <div class="button-group">
                     <button id="start-btn" class="btn-success">
                         ▶️ Start Capturing
                     </button>
@@ -373,6 +384,18 @@
                     </button>
                     <button id="download-btn" class="btn-primary">
                         📥 Download Logs
+                    </button>
+                </div>
+
+                <div class="button-group">
+                    <button id="bulk-publish-btn" class="btn-primary" disabled>
+                        📦 Publish Bulk (<span id="bulk-count">0</span> events)
+                    </button>
+                    <button id="clear-bulk-btn" class="btn-warning" disabled>
+                        🗑️ Clear Bulk
+                    </button>
+                    <button id="preview-bulk-btn" class="btn-info" disabled>
+                        👁️ Preview Bulk
                     </button>
                 </div>
             </div>
