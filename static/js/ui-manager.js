@@ -12,6 +12,7 @@ class UIManager {
         this.isCapturing = false;
         this.currentEndpoint = '';
         this.currentMode = 'raw';
+        this.hasLogsInUI = false; // Track if we have logs displayed in UI
         
         // DOM element cache
         this.elements = {};
@@ -27,7 +28,7 @@ class UIManager {
     initializeElements() {
         this.elements = {
             // Form elements
-            endpointInput: document.getElementById('endpoint'),
+           // endpointInput: document.getElementById('endpoint'),
             bulkEndpointInput: document.getElementById('bulk-endpoint'),
             modeSelect: document.getElementById('mode'),
             
@@ -35,7 +36,7 @@ class UIManager {
             startBtn: document.getElementById('start-btn'),
             stopBtn: document.getElementById('stop-btn'),
             downloadBtn: document.getElementById('download-btn'),
-            testEndpointBtn: document.getElementById('test-endpoint-btn'),
+           // testEndpointBtn: document.getElementById('test-endpoint-btn'),
             testBulkEndpointBtn: document.getElementById('test-bulk-endpoint-btn'),
             bulkPublishBtn: document.getElementById('bulk-publish-btn'),
             clearBulkBtn: document.getElementById('clear-bulk-btn'),
@@ -50,9 +51,15 @@ class UIManager {
             deviceLastUpdate: document.getElementById('device-last-update'),
             captureStatusText: document.getElementById('capture-status-text'),
             endpointStatusText: document.getElementById('endpoint-status-text'),
-            endpointTestStatus: document.getElementById('endpoint-test-status'),
+           // endpointTestStatus: document.getElementById('endpoint-test-status'),
             bulkEndpointTestStatus: document.getElementById('bulk-endpoint-test-status'),
             bulkCount: document.getElementById('bulk-count'),
+            
+            // Info modal elements
+            infoBtn: document.getElementById('info-btn'),
+            dataTypesModal: document.getElementById('data-types-modal'),
+            modalCloseBtn: document.getElementById('modal-close-btn'),
+            modalBody: document.getElementById('modal-body'),
             
             // Containers
             logsContainer: document.getElementById('logs-container'),
@@ -65,7 +72,7 @@ class UIManager {
      */
     setupEventHandlers() {
         // Button click handlers
-        this.elements.testEndpointBtn.addEventListener('click', () => this.testEndpoint());
+        //this.elements.testEndpointBtn.addEventListener('click', () => this.testEndpoint());
         this.elements.testBulkEndpointBtn.addEventListener('click', () => this.testBulkEndpoint());
         this.elements.bulkPublishBtn.addEventListener('click', () => this.bulkPublish());
         this.elements.clearBulkBtn.addEventListener('click', () => this.clearBulkLogs());
@@ -81,8 +88,26 @@ class UIManager {
         this.elements.stopBtn.addEventListener('click', () => this.stopCapture());
         this.elements.downloadBtn.addEventListener('click', () => this.downloadLogs());
 
+        // Info modal handlers
+        this.elements.infoBtn.addEventListener('click', () => this.showDataTypesModal());
+        this.elements.modalCloseBtn.addEventListener('click', () => this.hideDataTypesModal());
+        
+        // Close modal when clicking outside
+        this.elements.dataTypesModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.dataTypesModal) {
+                this.hideDataTypesModal();
+            }
+        });
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.elements.dataTypesModal.classList.contains('show')) {
+                this.hideDataTypesModal();
+            }
+        });
+
         // Auto-save settings when changed
-        this.elements.endpointInput.addEventListener('change', () => this.saveSettings());
+       // this.elements.endpointInput.addEventListener('change', () => this.saveSettings());
         this.elements.bulkEndpointInput.addEventListener('change', () => this.saveSettings());
         this.elements.modeSelect.addEventListener('change', () => this.saveSettings());
     }
@@ -160,8 +185,21 @@ class UIManager {
         this.elements.captureStatusText.textContent = capturing ? 'Capturing logs...' : 'Not capturing';
         document.getElementById('capture-status').className = capturing ? 'status-card capturing' : 'status-card';
         
+        // Update button states
         this.elements.startBtn.disabled = capturing;
         this.elements.stopBtn.disabled = !capturing;
+        
+        // Add visual feedback to buttons
+        if (capturing) {
+            this.elements.startBtn.classList.add('disabled');
+            this.elements.stopBtn.classList.remove('disabled');
+        } else {
+            this.elements.startBtn.classList.remove('disabled');
+            this.elements.stopBtn.classList.add('disabled');
+        }
+        
+        // Update bulk button states based on capture status and log availability
+        this.updateBulkButtonStates();
     }
 
     /**
@@ -177,6 +215,27 @@ class UIManager {
         if (data.message) {
             const alertType = data.status === 'error' ? 'danger' : 'info';
             this.showAlert(data.message, alertType);
+        }
+        
+        // Ensure button states are consistent after status updates
+        this.ensureButtonStatesConsistent();
+    }
+
+    /**
+     * Ensure button states are consistent with current capture status
+     */
+    ensureButtonStatesConsistent() {
+        // Double-check that button states match the isCapturing flag
+        this.elements.startBtn.disabled = this.isCapturing;
+        this.elements.stopBtn.disabled = !this.isCapturing;
+        
+        // Update visual feedback
+        if (this.isCapturing) {
+            this.elements.startBtn.classList.add('disabled');
+            this.elements.stopBtn.classList.remove('disabled');
+        } else {
+            this.elements.startBtn.classList.remove('disabled');
+            this.elements.stopBtn.classList.add('disabled');
         }
     }
 
@@ -218,16 +277,22 @@ class UIManager {
         while (this.elements.logsContainer.children.length > 50) {
             this.elements.logsContainer.removeChild(this.elements.logsContainer.firstChild);
         }
+        
+        // Mark that we have logs in UI
+        this.hasLogsInUI = true;
+        
+        // Update bulk button states
+        this.updateBulkButtonStates();
     }
 
     /**
      * Load settings into UI
      */
     loadSettings(settings) {
-        this.elements.endpointInput.value = settings.endpoint || '';
+      //  this.elements.endpointInput.value = settings.endpoint || '';
         this.elements.bulkEndpointInput.value = settings.bulk_endpoint || '';
         this.elements.modeSelect.value = settings.mode || 'raw';
-        this.currentEndpoint = settings.endpoint || '';
+       /// this.currentEndpoint = settings.endpoint || '';
         this.currentBulkEndpoint = settings.bulk_endpoint || '';
         this.currentMode = settings.mode || 'raw';
     }
@@ -243,23 +308,24 @@ class UIManager {
         }
 
         this.setButtonLoading(this.elements.testEndpointBtn, 'Testing...');
-        this.updateEndpointStatus('testing', 'Testing...', this.elements.endpointTestStatus);
+       
+       // this.updateEndpointStatus('testing', 'Testing...', this.elements.endpointTestStatus);
 
         try {
             const result = await this.apiClient.testEndpoint(endpoint, 'realtime');
             
             if (result.success) {
                 this.showAlert(result.message, 'success');
-                this.updateEndpointStatus('success', 'Connected ✓', this.elements.endpointTestStatus);
+              //  this.updateEndpointStatus('success', 'Connected ✓', this.elements.endpointTestStatus);
                 this.elements.endpointStatusText.textContent = 'Realtime endpoint is reachable';
             } else {
                 this.showAlert(`Realtime endpoint test failed: ${result.message}`, 'danger');
-                this.updateEndpointStatus('error', 'Failed ✗', this.elements.endpointTestStatus);
+             //   this.updateEndpointStatus('error', 'Failed ✗', this.elements.endpointTestStatus);
                 this.elements.endpointStatusText.textContent = 'Realtime endpoint unreachable';
             }
         } catch (error) {
             this.showAlert(`Network error: ${error.message}`, 'danger');
-            this.updateEndpointStatus('error', 'Error ✗', this.elements.endpointTestStatus);
+          //  this.updateEndpointStatus('error', 'Error ✗', this.elements.endpointTestStatus);
         } finally {
             this.resetButtonLoading(this.elements.testEndpointBtn, '🔍 Test Realtime');
         }
@@ -303,7 +369,8 @@ class UIManager {
      * Update endpoint status indicator
      */
     updateEndpointStatus(status, text, element = null) {
-        const statusElement = element || this.elements.endpointTestStatus;
+       // const statusElement = element || this.elements.endpointTestStatus;
+         const statusElement = element;
         statusElement.className = `endpoint-status ${status}`;
         statusElement.textContent = text;
         statusElement.classList.remove('hidden');
@@ -313,20 +380,20 @@ class UIManager {
      * Save settings
      */
     async saveSettings() {
-        const endpoint = this.elements.endpointInput.value.trim();
+      //  const endpoint = this.elements.endpointInput.value.trim();
         const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
 
         try {
             const result = await this.apiClient.saveSettings({ 
-                endpoint, 
+               
                 bulk_endpoint: bulkEndpoint, 
                 mode 
             });
             
             if (result.success) {
                 this.showAlert('Settings saved successfully', 'success');
-                this.currentEndpoint = endpoint;
+                //this.currentEndpoint = endpoint;
                 this.currentBulkEndpoint = bulkEndpoint;
                 this.currentMode = mode;
             } else {
@@ -350,13 +417,13 @@ class UIManager {
             
             if (result.success) {
                 this.showAlert('Settings cleared successfully', 'success');
-                this.elements.endpointInput.value = '';
+              //  this.elements.endpointInput.value = '';
                 this.elements.bulkEndpointInput.value = '';
                 this.elements.modeSelect.value = 'raw';
                 this.currentEndpoint = '';
                 this.currentBulkEndpoint = '';
                 this.currentMode = 'raw';
-                this.elements.endpointTestStatus.classList.add('hidden');
+               // this.elements.endpointTestStatus.classList.add('hidden');
                 this.elements.bulkEndpointTestStatus.classList.add('hidden');
                 this.elements.endpointStatusText.textContent = 'Not tested';
             } else {
@@ -371,11 +438,15 @@ class UIManager {
      * Start capture
      */
     async startCapture() {
-        const endpoint = this.elements.endpointInput.value.trim();
+      //  const endpoint = this.elements.endpointInput.value.trim();
         const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
 
-        if (!endpoint && !bulkEndpoint) {
+        // if (!endpoint && !bulkEndpoint) {
+        //     this.showAlert('Please enter at least one endpoint URL (realtime or bulk)', 'danger');
+        //     return;
+        // }
+          if (!bulkEndpoint) {
             this.showAlert('Please enter at least one endpoint URL (realtime or bulk)', 'danger');
             return;
         }
@@ -383,19 +454,30 @@ class UIManager {
         this.setButtonLoading(this.elements.startBtn, 'Starting...');
 
         try {
-            const result = await this.apiClient.startCapture(endpoint, bulkEndpoint, mode);
+            const result = await this.apiClient.startCapture(bulkEndpoint, mode);
             
             if (result.success) {
                 this.showAlert(result.message, 'success');
                 this.updateCaptureStatus(true);
-                this.updateBulkButtonStates(true);
+                // Note: Don't automatically enable bulk buttons here
+                // They should be enabled when actual log events are received
             } else {
                 this.showAlert(result.message, 'danger');
+                // If start fails, ensure we're in stopped state
+                this.updateCaptureStatus(false);
             }
         } catch (error) {
             this.showAlert(`Error starting capture: ${error.message}`, 'danger');
+            // If error occurs, ensure we're in stopped state
+            this.updateCaptureStatus(false);
         } finally {
             this.resetButtonLoading(this.elements.startBtn, '▶️ Start Capturing');
+            // Ensure start button is properly enabled/disabled after reset
+            if (this.isCapturing) {
+                this.elements.startBtn.disabled = true;
+            } else {
+                this.elements.startBtn.disabled = false;
+            }
         }
     }
 
@@ -413,11 +495,19 @@ class UIManager {
                 this.updateCaptureStatus(false);
             } else {
                 this.showAlert(result.message, 'danger');
+                // Even if API fails, update UI state for consistency
+                this.updateCaptureStatus(false);
             }
         } catch (error) {
             this.showAlert(`Error stopping capture: ${error.message}`, 'danger');
+            // Even if there's an error, update UI state
+            this.updateCaptureStatus(false);
         } finally {
             this.resetButtonLoading(this.elements.stopBtn, '⏹️ Stop Capturing');
+            // Ensure stop button is disabled after reset
+            if (!this.isCapturing) {
+                this.elements.stopBtn.disabled = true;
+            }
         }
     }
 
@@ -440,25 +530,60 @@ class UIManager {
      * Reset button from loading state
      */
     resetButtonLoading(button, originalText) {
-        button.disabled = false;
         button.innerHTML = originalText;
+        // Re-enable the button only if it should be enabled based on current state
+        if (button === this.elements.startBtn) {
+            button.disabled = this.isCapturing;
+        } else if (button === this.elements.stopBtn) {
+            button.disabled = !this.isCapturing;
+        } else if (button === this.elements.bulkPublishBtn) {
+            // For bulk buttons, call updateBulkButtonStates to set proper state
+            this.updateBulkButtonStates();
+        } else {
+            // For other buttons, enable them
+            button.disabled = false;
+        }
     }
 
     /**
      * Update bulk button states
+     * Bulk buttons should only be enabled when:
+     * 1. Capture is NOT running (stopped)
+     * 2. There are logs available in the UI
      */
-    updateBulkButtonStates(hasData) {
-        this.elements.bulkPublishBtn.disabled = !hasData;
-        this.elements.clearBulkBtn.disabled = !hasData;
-        this.elements.previewBulkBtn.disabled = !hasData;
+    updateBulkButtonStates() {
+        const shouldEnable = !this.isCapturing && this.hasLogsInUI;
+        
+        this.elements.bulkPublishBtn.disabled = !shouldEnable;
+        this.elements.clearBulkBtn.disabled = !shouldEnable;
+        this.elements.previewBulkBtn.disabled = !shouldEnable;
+        
+        // Update button text to reflect status
+        if (this.isCapturing) {
+            this.elements.bulkPublishBtn.innerHTML = '📦 Publish Logs (Stop capturing first)';
+        } else if (!this.hasLogsInUI) {
+            this.elements.bulkPublishBtn.innerHTML = '📦 Publish Logs (No logs captured)';
+        } else {
+            this.elements.bulkPublishBtn.innerHTML = '📦 Publish Logs';
+        }
     }
 
     /**
      * Update bulk count display
      */
     updateBulkCount(count) {
-        // this.elements.bulkCount.textContent = count;
-        // this.updateBulkButtonStates(count > 0);
+        // Update bulk button states based on capture status and log availability
+        this.updateBulkButtonStates();
+        
+        // If count becomes 0, we have no logs in backend
+        if (count === 0) {
+            // Check if we also have no logs in UI (could be different from backend)
+            const logsInUI = this.elements.logsContainer.children.length > 0;
+            if (!logsInUI) {
+                this.hasLogsInUI = false;
+                this.updateBulkButtonStates();
+            }
+        }
     }
 
     /**
@@ -544,6 +669,8 @@ class UIManager {
         if (data.success) {
             this.showAlert(`Bulk publish successful: ${data.published_count} events`, 'success');
             this.updateBulkCount(0);
+            // After successful publish, reset button text
+            this.elements.bulkPublishBtn.innerHTML = '📦 Publish Logs';
         } else {
             this.showAlert('Bulk publish failed', 'danger');
         }
@@ -555,19 +682,60 @@ class UIManager {
     handleBulkLogsCleared(data) {
         this.showAlert(`Bulk logs cleared: ${data.cleared_count} events`, 'info');
         this.updateBulkCount(0);
+        // After clearing, reset button text
+        this.elements.bulkPublishBtn.innerHTML = '📦 Publish Logs';
+    }
+
+    /**
+     * Show supported data types modal
+     */
+    showDataTypesModal() {
+        this.elements.dataTypesModal.classList.add('show');
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+
+    /**
+     * Hide supported data types modal
+     */
+    hideDataTypesModal() {
+        this.elements.dataTypesModal.classList.remove('show');
+        document.body.style.overflow = ''; // Restore background scrolling
+    }
+
+    /**
+     * Update supported data types content
+     * Call this method to update the modal content with your data types information
+     */
+    updateSupportedDataTypes(content) {
+        this.elements.modalBody.innerHTML = content;
     }
 
     /**
      * Initialize UI on page load
      */
-    initialize() {
-        // Auto-test endpoint if one is configured
-        if (this.elements.endpointInput.value.trim()) {
-            setTimeout(() => this.testEndpoint(), 1000);
-        }
-        
+    async initialize() {
         // Initialize bulk count
         this.updateBulkCount(0);
+        
+        // Initialize button states
+        this.updateCaptureStatus(false);
+        
+        // Set initial hasLogsInUI state
+        this.hasLogsInUI = false;
+        this.updateBulkButtonStates();
+        
+        // Sync with server state
+        try {
+            const status = await this.apiClient.getStatus();
+            this.updateCaptureStatus(status.is_capturing);
+            
+            // Update bulk count if available
+            if (status.bulk_logs_count !== undefined) {
+                this.updateBulkCount(status.bulk_logs_count);
+            }
+        } catch (error) {
+            console.warn('Could not sync with server status:', error);
+        }
     }
 }
 

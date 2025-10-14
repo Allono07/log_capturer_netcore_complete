@@ -41,11 +41,11 @@ class APIClient {
     /**
      * Start log capture
      */
-    async startCapture(endpoint, bulkEndpoint, mode) {
+    async startCapture(bulkEndpoint, mode) {
         return this.makeRequest('/api/start', {
             method: 'POST',
             body: JSON.stringify({ 
-                endpoint, 
+                endpoint: '', // No realtime endpoint for now
                 bulk_endpoint: bulkEndpoint, 
                 mode 
             })

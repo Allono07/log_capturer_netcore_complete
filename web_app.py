@@ -152,9 +152,9 @@ def process_line(line: str, endpoint: str, mode: str):
         matched_text = f"{label}: {match.group(1)}"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Append to local log file
+        # Append to local log file (without timestamp prefix)
         with open(LOG_FILE, "a") as f:
-            f.write(f"{timestamp} | {matched_text}\n\n")
+            f.write(f"{matched_text}\n\n")
 
         # Try parse JSON for json mode
         parsed = None
@@ -257,6 +257,7 @@ def capture_logs():
         if not device_connected:
             socketio.emit('device_status', {'connected': False, 'message': 'No Android device connected'})
             socketio.emit('status_update', {'status': 'error', 'message': 'No Android device connected. Please connect your device and enable USB debugging.'})
+            is_capturing = False
             return
         
         # Emit device connection status
@@ -285,7 +286,11 @@ def capture_logs():
         socketio.emit('device_status', {'connected': False, 'message': f'Device connection error: {str(e)}'})
     finally:
         if capture_process:
-            capture_process.terminate()
+            try:
+                capture_process.terminate()
+            except:
+                pass
+        capture_process = None
         is_capturing = False
         socketio.emit('status_update', {'status': 'stopped', 'message': 'Log capture stopped.'})
 
@@ -350,10 +355,22 @@ def test_endpoint():
 @app.route('/api/start', methods=['POST'])
 def start_capture():
     """Start log capture."""
-    global is_capturing, capture_thread, current_endpoint, current_bulk_endpoint, current_mode, bulk_logs
+    global is_capturing, capture_thread, current_endpoint, current_bulk_endpoint, current_mode, bulk_logs, capture_process
     
-    if is_capturing:
+    # Check if already capturing and thread is still active
+    if is_capturing and capture_thread and capture_thread.is_alive():
         return jsonify({'success': False, 'message': 'Already capturing logs'})
+    
+    # Reset state if thread is not active but flag is set
+    if is_capturing and (not capture_thread or not capture_thread.is_alive()):
+        print("Resetting capture state - thread not active")
+        is_capturing = False
+        if capture_process:
+            try:
+                capture_process.terminate()
+            except:
+                pass
+            capture_process = None
     
     data = request.get_json()
     endpoint = data.get('endpoint', '').strip()
@@ -461,6 +478,10 @@ def bulk_publish():
     
     if not bulk_logs:
         return jsonify({'success': False, 'message': 'No logs to publish'})
+    
+    # Don't allow bulk publish while capturing
+    if is_capturing:
+        return jsonify({'success': False, 'message': 'Cannot publish while capturing. Please stop capturing first.'})
     
     try:
         # Prepare bulk data in the same format as continuous pushing
@@ -585,4 +606,4 @@ if __name__ == '__main__':
     if settings['bulk_endpoint']:
         print(f"📦 Loaded saved bulk endpoint: {settings['bulk_endpoint']}")
     
-    socketio.run(app, host='0.0.0.0', port=5005, debug=False)
+    socketio.run(app, host='0.0.0.0', port=7072, debug=False)
