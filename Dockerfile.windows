@@ -1,0 +1,16 @@
+# Dockerfile for building Windows executable
+FROM python:3.11-windowsservercore
+
+# Set working directory
+WORKDIR /app
+
+# Copy project files
+COPY . .
+
+# Install dependencies
+RUN pip install flask requests pyinstaller
+
+# Build Windows executable
+RUN pyinstaller --onefile --add-data "templates;templates" --add-data "static;static" --name "AndroidLogCapturerSimple" web_app_simple.py
+
+# The executable will be in dist/AndroidLogCapturerSimple.exe

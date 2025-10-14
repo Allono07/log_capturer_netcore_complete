@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Android Log Capturer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input, 
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #5a67d8;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: #218838;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background-color: #138496;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .log-container {
+            background-color: #1e1e1e;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 2px;
+            word-wrap: break-word;
+        }
+
+        .log-timestamp {
+            color: #6272a4;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .webhook-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .webhook-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .bulk-info {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Android Log Capturer</h1>
+            <p>Real-time Android device log monitoring with dual webhook support</p>
+        </div>
+
+        <div id="status" class="status status-warning">
+            <span id="status-text">Initializing...</span>
+        </div>
+
+        <div class="card">
+            <h2>📱 Device Connection</h2>
+            <div class="controls-grid">
+                <div class="form-group">
+                    <label for="device-select">Select Device:</label>
+                    <select id="device-select">
+                        <option value="">No devices found</option>
+                        {% for device in devices %}
+                        <option value="{{ device }}" {% if device == current_device %}selected{% endif %}>{{ device }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <button class="btn btn-primary" onclick="refreshDevices()">🔄 Refresh Devices</button>
+                    <button class="btn btn-success" onclick="connectDevice()">🔗 Connect</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>⚙️ Webhook Configuration</h2>
+            <div class="webhook-grid">
+                <div>
+                    <h3>🔄 Realtime Webhook</h3>
+                    <p style="margin-bottom: 10px; color: #666; font-size: 0.9rem;">
+                        Sends individual log entries in real-time as they occur
+                    </p>
+                    <div class="form-group">
+                        <label for="realtime-webhook">Realtime Webhook URL:</label>
+                        <input type="url" id="realtime-webhook" placeholder="https://your-endpoint/realtime" 
+                               value="{{ settings.realtime_webhook_url }}">
+                    </div>
+                </div>
+                <div>
+                    <h3>📦 Bulk Webhook</h3>
+                    <p style="margin-bottom: 10px; color: #666; font-size: 0.9rem;">
+                        Sends accumulated logs in bulk when manually triggered
+                    </p>
+                    <div class="form-group">
+                        <label for="bulk-webhook">Bulk Webhook URL:</label>
+                        <input type="url" id="bulk-webhook" placeholder="https://your-endpoint/bulk" 
+                               value="{{ settings.bulk_webhook_url }}">
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-info" onclick="saveSettings()">💾 Save Settings</button>
+        </div>
+
+        <div class="card">
+            <h2>📊 Log Capture Control</h2>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="log-count">0</div>
+                    <div class="stat-label">Live Logs</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="bulk-count">0</div>
+                    <div class="stat-label">Bulk Queue</div>
+                </div>
+            </div>
+            
+            <div class="controls-grid">
+                <div>
+                    <button class="btn btn-success" onclick="startCapture()">▶️ Start Capture</button>
+                    <button class="btn btn-danger" onclick="stopCapture()">⏹️ Stop Capture</button>
+                </div>
+                <div>
+                    <button class="btn btn-info" onclick="refreshLogs()">🔄 Refresh Logs</button>
+                    <button class="btn btn-primary" onclick="bulkPublish()">📤 Bulk Publish</button>
+                </div>
+            </div>
+
+            <div class="bulk-info">
+                <strong>💡 Tip:</strong> Realtime webhooks send logs immediately. Use "Bulk Publish" to send all accumulated logs at once to the bulk endpoint.
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📜 Live Logs</h2>
+            <div class="log-container" id="log-container">
+                <div class="log-entry">Waiting for logs...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStatus = '';
+
+        // Update status display
+        function updateStatus(message, type = 'warning') {
+            const statusElement = document.getElementById('status');
+            const statusText = document.getElementById('status-text');
+            
+            statusElement.className = `status status-${type}`;
+            statusText.textContent = message;
+            currentStatus = message;
+        }
+
+        // Refresh devices list
+        async function refreshDevices() {
+            try {
+                const response = await fetch('/api/devices');
+                const data = await response.json();
+                
+                const select = document.getElementById('device-select');
+                select.innerHTML = '';
+                
+                if (data.devices.length === 0) {
+                    select.innerHTML = '<option value="">No devices found</option>';
+                } else {
+                    data.devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device;
+                        option.textContent = device;
+                        select.appendChild(option);
+                    });
+                }
+                
+                updateStatus(`Found ${data.devices.length} device(s)`, 'success');
+            } catch (error) {
+                updateStatus('Error refreshing devices: ' + error.message, 'error');
+            }
+        }
+
+        // Connect to selected device
+        async function connectDevice() {
+            const deviceId = document.getElementById('device-select').value;
+            
+            if (!deviceId) {
+                updateStatus('Please select a device first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: deviceId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus(`Connected to device: ${deviceId}`, 'success');
+                } else {
+                    updateStatus('Failed to connect to device', 'error');
+                }
+            } catch (error) {
+                updateStatus('Error connecting to device: ' + error.message, 'error');
+            }
+        }
+
+        // Save webhook settings
+        async function saveSettings() {
+            const realtimeUrl = document.getElementById('realtime-webhook').value;
+            const bulkUrl = document.getElementById('bulk-webhook').value;
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        realtime_webhook_url: realtimeUrl,
+                        bulk_webhook_url: bulkUrl,
+                        log_level: 'all'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus('Settings saved successfully', 'success');
+                } else {
+                    updateStatus('Failed to save settings', 'error');
+                }
+            } catch (error) {
+                updateStatus('Error saving settings: ' + error.message, 'error');
+            }
+        }
+
+        // Start log capture
+        async function startCapture() {
+            try {
+                const response = await fetch('/api/start_capture', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus('Log capture started', 'success');
+                } else {
+                    updateStatus(data.error || 'Failed to start capture', 'error');
+                }
+            } catch (error) {
+                updateStatus('Error starting capture: ' + error.message, 'error');
+            }
+        }
+
+        // Stop log capture
+        async function stopCapture() {
+            try {
+                const response = await fetch('/api/stop_capture', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus('Log capture stopped', 'warning');
+                } else {
+                    updateStatus('Failed to stop capture', 'error');
+                }
+            } catch (error) {
+                updateStatus('Error stopping capture: ' + error.message, 'error');
+            }
+        }
+
+        // Refresh and display logs
+        async function refreshLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                
+                const logContainer = document.getElementById('log-container');
+                
+                if (data.logs.length === 0) {
+                    logContainer.innerHTML = '<div class="log-entry">No logs available</div>';
+                } else {
+                    logContainer.innerHTML = data.logs.map(log => 
+                        `<div class="log-entry">
+                            <span class="log-timestamp">[${log.timestamp}]</span> ${log.log}
+                        </div>`
+                    ).join('');
+                    
+                    // Scroll to bottom
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error refreshing logs:', error);
+            }
+        }
+
+        // Bulk publish logs
+        async function bulkPublish() {
+            try {
+                const response = await fetch('/api/bulk_publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus(`Bulk published ${data.logs_sent} logs successfully`, 'success');
+                } else {
+                    updateStatus(data.error || 'Failed to bulk publish', 'error');
+                }
+            } catch (error) {
+                updateStatus('Error bulk publishing: ' + error.message, 'error');
+            }
+        }
+
+        // Update status and stats periodically
+        async function updateStats() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                document.getElementById('log-count').textContent = data.log_count;
+                document.getElementById('bulk-count').textContent = data.bulk_count;
+                
+                if (data.capture_active) {
+                    updateStatus(`Capturing logs from ${data.device_id}`, 'success');
+                } else if (data.device_id) {
+                    updateStatus(`Connected to ${data.device_id} - Ready to capture`, 'warning');
+                }
+                
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshDevices();
+            updateStats();
+            
+            // Auto-refresh logs and stats every 2 seconds
+            setInterval(() => {
+                refreshLogs();
+                updateStats();
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

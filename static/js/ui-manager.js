@@ -483,7 +483,7 @@ class UIManager {
         } catch (error) {
             this.showAlert(`Error publishing bulk data: ${error.message}`, 'danger');
         } finally {
-            this.resetButtonLoading(this.elements.bulkPublishBtn, '📦 Publish Bulk '+result.published_count);
+            this.resetButtonLoading(this.elements.bulkPublishBtn, '📦 Publish Bulk ');
         }
     }
 
