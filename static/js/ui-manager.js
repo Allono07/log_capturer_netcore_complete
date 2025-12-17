@@ -31,6 +31,7 @@ class UIManager {
            // endpointInput: document.getElementById('endpoint'),
             bulkEndpointInput: document.getElementById('bulk-endpoint'),
             modeSelect: document.getElementById('mode'),
+            platformSelect: document.getElementById('platform'),
             
             // Buttons
             startBtn: document.getElementById('start-btn'),
@@ -292,6 +293,7 @@ class UIManager {
       //  this.elements.endpointInput.value = settings.endpoint || '';
         this.elements.bulkEndpointInput.value = settings.bulk_endpoint || '';
         this.elements.modeSelect.value = settings.mode || 'raw';
+        this.elements.platformSelect.value = settings.platform || 'android';
        /// this.currentEndpoint = settings.endpoint || '';
         this.currentBulkEndpoint = settings.bulk_endpoint || '';
         this.currentMode = settings.mode || 'raw';
@@ -383,12 +385,14 @@ class UIManager {
       //  const endpoint = this.elements.endpointInput.value.trim();
         const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
+        const platform = this.elements.platformSelect.value;
 
         try {
             const result = await this.apiClient.saveSettings({ 
                
                 bulk_endpoint: bulkEndpoint, 
-                mode 
+                mode,
+                platform
             });
             
             if (result.success) {
@@ -420,6 +424,7 @@ class UIManager {
               //  this.elements.endpointInput.value = '';
                 this.elements.bulkEndpointInput.value = '';
                 this.elements.modeSelect.value = 'raw';
+                this.elements.platformSelect.value = 'android';
                 this.currentEndpoint = '';
                 this.currentBulkEndpoint = '';
                 this.currentMode = 'raw';
@@ -441,6 +446,7 @@ class UIManager {
       //  const endpoint = this.elements.endpointInput.value.trim();
         const bulkEndpoint = this.elements.bulkEndpointInput.value.trim();
         const mode = this.elements.modeSelect.value;
+        const platform = this.elements.platformSelect.value;
 
         // if (!endpoint && !bulkEndpoint) {
         //     this.showAlert('Please enter at least one endpoint URL (realtime or bulk)', 'danger');
@@ -454,7 +460,7 @@ class UIManager {
         this.setButtonLoading(this.elements.startBtn, 'Starting...');
 
         try {
-            const result = await this.apiClient.startCapture(bulkEndpoint, mode);
+            const result = await this.apiClient.startCapture(bulkEndpoint, mode, platform);
             
             if (result.success) {
                 this.showAlert(result.message, 'success');

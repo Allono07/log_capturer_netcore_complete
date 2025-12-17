@@ -597,6 +597,14 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="platform">Platform:</label>
+                    <select id="platform">
+                        <option value="android" {{ 'selected' if platform == 'android' else '' }}>Android (ADB)</option>
+                        <option value="ios" {{ 'selected' if platform == 'ios' else '' }}>iOS (idevicesyslog)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label for="mode">Send Mode:</label>
                     <select id="mode">
                         <option value="raw" {{ 'selected' if mode == 'raw' else '' }}>Raw Text</option>

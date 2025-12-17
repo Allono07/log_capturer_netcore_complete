@@ -5,6 +5,8 @@ import re
 import json
 import requests
 import time
+import shutil
+import os
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit
@@ -27,6 +29,7 @@ is_monitoring_device = False
 current_endpoint = ""
 current_bulk_endpoint = ""
 current_mode = "raw"
+current_platform = "android"
 log_queue = queue.Queue()
 bulk_logs = []  # Store logs for bulk publishing
 
@@ -45,7 +48,8 @@ def load_settings():
     default_settings = {
         'endpoint': '',
         'bulk_endpoint': '',
-        'mode': 'raw'
+        'mode': 'raw',
+        'platform': 'android'
     }
     
     try:
@@ -58,12 +62,13 @@ def load_settings():
     
     return default_settings
 
-def save_settings(endpoint, bulk_endpoint, mode):
+def save_settings(endpoint, bulk_endpoint, mode, platform):
     """Save settings to file."""
     settings = {
         'endpoint': endpoint,
         'bulk_endpoint': bulk_endpoint,
-        'mode': mode
+        'mode': mode,
+        'platform': platform
     }
     
     try:
@@ -193,33 +198,74 @@ def process_line(line: str, endpoint: str, mode: str):
         socketio.emit('log_event', event_data)
         log_queue.put(event_data)
 
-def check_device_connection():
-    """Check if Android device is connected via ADB."""
+def check_device_connection(platform='android'):
+    """Check if device is connected via ADB (Android) or libimobiledevice (iOS)."""
+    # print(f"Checking connection for platform: {platform}")
     try:
-        result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')[1:]  # Skip header line
-            devices = [line for line in lines if line.strip() and 'device' in line]
-            return len(devices) > 0, devices
+        if platform == 'android':
+            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')[1:]  # Skip header line
+                devices = [line for line in lines if line.strip() and 'device' in line]
+                return len(devices) > 0, devices
+            return False, []
+        elif platform == 'ios':
+            # Check for connected iOS devices using idevice_id
+            try:
+                # Try to find idevice_id in common paths if not in PATH
+                cmd = 'idevice_id'
+                if not shutil.which(cmd):
+                    if os.path.exists('/usr/local/bin/idevice_id'):
+                        cmd = '/usr/local/bin/idevice_id'
+                    elif os.path.exists('/opt/homebrew/bin/idevice_id'):
+                        cmd = '/opt/homebrew/bin/idevice_id'
+                
+                # print(f"[DEBUG] Checking iOS devices using command: {cmd}")
+                result = subprocess.run([cmd, '-l'], capture_output=True, text=True, timeout=5)
+                # print(f"[DEBUG] idevice_id return code: {result.returncode}")
+                # print(f"[DEBUG] idevice_id stdout: {result.stdout}")
+                # print(f"[DEBUG] idevice_id stderr: {result.stderr}")
+
+                if result.returncode == 0:
+                    devices = [line for line in result.stdout.strip().split('\n') if line.strip()]
+                    # print(f"[DEBUG] Parsed devices: {devices}")
+                    return len(devices) > 0, devices
+                return False, []
+            except FileNotFoundError:
+                # print("[DEBUG] idevice_id not found via subprocess")
+                return False, ["'idevice_id' not found. Please install libimobiledevice (brew install libimobiledevice)."]
+            except Exception as e:
+                # print(f"[DEBUG] Error running idevice_id: {e}")
+                return False, [f"Error: {str(e)}"]
         return False, []
     except Exception as e:
+        print(f"Error checking devices: {e}")
+        return False, [f"Error checking devices: {str(e)}"]
+        return False, []
+    except Exception as e:
+        print(f"Error checking devices: {e}")
         return False, [f"Error checking devices: {str(e)}"]
 
 def monitor_device_connection():
     """Background thread to monitor device connection continuously."""
-    global is_monitoring_device
+    global is_monitoring_device, current_platform
     
     last_status = None
     
     while is_monitoring_device:
         try:
-            device_connected, device_info = check_device_connection()
+            device_connected, device_info = check_device_connection(current_platform)
             
+            message = f'Connected to {len(device_info)} device(s)' if device_connected else 'No devices connected'
+            if not device_connected and device_info:
+                message = device_info[0]
+
             current_status = {
                 'connected': device_connected,
                 'devices': device_info,
-                'message': f'Connected to {len(device_info)} device(s)' if device_connected else 'No devices connected',
-                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'message': message,
+                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'platform': current_platform
             }
             
             # Only emit if status changed
@@ -248,27 +294,40 @@ def stop_device_monitoring():
     is_monitoring_device = False
 
 def capture_logs():
-    """Background thread function to capture adb logs."""
-    global capture_process, is_capturing
+    """Background thread function to capture adb or ios logs."""
+    global capture_process, is_capturing, current_platform
     
     try:
         # Check device connection first
-        device_connected, device_info = check_device_connection()
+        device_connected, device_info = check_device_connection(current_platform)
         if not device_connected:
-            socketio.emit('device_status', {'connected': False, 'message': 'No Android device connected'})
-            socketio.emit('status_update', {'status': 'error', 'message': 'No Android device connected. Please connect your device and enable USB debugging.'})
+            socketio.emit('device_status', {'connected': False, 'message': f'No {current_platform} device connected'})
+            socketio.emit('status_update', {'status': 'error', 'message': f'No {current_platform} device connected. Please connect your device.'})
             is_capturing = False
             return
         
         # Emit device connection status
         socketio.emit('device_status', {'connected': True, 'devices': device_info, 'message': f'Connected to {len(device_info)} device(s)'})
         
-        # Start reading adb logcat
-        capture_process = subprocess.Popen([
-            "adb", "logcat"
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
-
-        socketio.emit('status_update', {'status': 'capturing', 'message': 'Started capturing Android logs...'})
+        # Start reading logs
+        if current_platform == 'android':
+            capture_process = subprocess.Popen([
+                "adb", "logcat"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
+            socketio.emit('status_update', {'status': 'capturing', 'message': 'Started capturing Android logs...'})
+        elif current_platform == 'ios':
+            # Use idevicesyslog for iOS
+            cmd = 'idevicesyslog'
+            if not shutil.which(cmd):
+                if os.path.exists('/usr/local/bin/idevicesyslog'):
+                    cmd = '/usr/local/bin/idevicesyslog'
+                elif os.path.exists('/opt/homebrew/bin/idevicesyslog'):
+                    cmd = '/opt/homebrew/bin/idevicesyslog'
+            
+            capture_process = subprocess.Popen([
+                cmd
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
+            socketio.emit('status_update', {'status': 'capturing', 'message': 'Started capturing iOS logs...'})
 
         for raw in capture_process.stdout:
             if not is_capturing:
@@ -302,7 +361,8 @@ def index():
     return render_template('index.html', 
                          endpoint=settings['endpoint'],
                          bulk_endpoint=settings['bulk_endpoint'], 
-                         mode=settings['mode'])
+                         mode=settings['mode'],
+                         platform=settings.get('platform', 'android'))
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
@@ -316,12 +376,14 @@ def update_settings():
     endpoint = data.get('endpoint', '').strip()
     bulk_endpoint = data.get('bulk_endpoint', '').strip()
     mode = data.get('mode', 'raw')
+    platform = data.get('platform', 'android')
     
-    if save_settings(endpoint, bulk_endpoint, mode):
-        global current_endpoint, current_bulk_endpoint, current_mode
+    if save_settings(endpoint, bulk_endpoint, mode, platform):
+        global current_endpoint, current_bulk_endpoint, current_mode, current_platform
         current_endpoint = endpoint
         current_bulk_endpoint = bulk_endpoint
         current_mode = mode
+        current_platform = platform
         return jsonify({'success': True, 'message': 'Settings saved'})
     else:
         return jsonify({'success': False, 'message': 'Failed to save settings'})
@@ -330,10 +392,11 @@ def update_settings():
 def clear_persistent_settings():
     """Clear all persistent settings."""
     if clear_settings():
-        global current_endpoint, current_bulk_endpoint, current_mode
+        global current_endpoint, current_bulk_endpoint, current_mode, current_platform
         current_endpoint = ""
         current_bulk_endpoint = ""
         current_mode = "raw"
+        current_platform = "android"
         return jsonify({'success': True, 'message': 'Settings cleared'})
     else:
         return jsonify({'success': False, 'message': 'Failed to clear settings'})
@@ -355,7 +418,7 @@ def test_endpoint():
 @app.route('/api/start', methods=['POST'])
 def start_capture():
     """Start log capture."""
-    global is_capturing, capture_thread, current_endpoint, current_bulk_endpoint, current_mode, bulk_logs, capture_process
+    global is_capturing, capture_thread, current_endpoint, current_bulk_endpoint, current_mode, current_platform, bulk_logs, capture_process
     
     # Check if already capturing and thread is still active
     if is_capturing and capture_thread and capture_thread.is_alive():
@@ -376,6 +439,7 @@ def start_capture():
     endpoint = data.get('endpoint', '').strip()
     bulk_endpoint = data.get('bulk_endpoint', '').strip()
     mode = data.get('mode', 'raw')
+    platform = data.get('platform', 'android')
     
     # At least one endpoint should be provided
     if not endpoint and not bulk_endpoint:
@@ -390,12 +454,13 @@ def start_capture():
     current_endpoint = endpoint
     current_bulk_endpoint = bulk_endpoint
     current_mode = mode
+    current_platform = platform
     
     # Clear previous bulk logs
     bulk_logs = []
     
     # Save settings for persistence
-    save_settings(endpoint, bulk_endpoint, mode)
+    save_settings(endpoint, bulk_endpoint, mode, platform)
     
     is_capturing = True
     
@@ -423,12 +488,13 @@ def stop_capture():
 @app.route('/api/status', methods=['GET'])
 def get_status():
     """Get current capture status."""
-    device_connected, device_info = check_device_connection()
+    device_connected, device_info = check_device_connection(current_platform)
     return jsonify({
         'is_capturing': is_capturing,
         'endpoint': current_endpoint,
         'bulk_endpoint': current_bulk_endpoint,
         'mode': current_mode,
+        'platform': current_platform,
         'device_connected': device_connected,
         'devices': device_info,
         'bulk_logs_count': len(bulk_logs)
@@ -437,7 +503,7 @@ def get_status():
 @app.route('/api/device-status', methods=['GET'])
 def get_device_status():
     """Get current device connection status."""
-    device_connected, device_info = check_device_connection()
+    device_connected, device_info = check_device_connection(current_platform)
     return jsonify({
         'connected': device_connected,
         'devices': device_info,
@@ -570,16 +636,17 @@ def handle_connect():
     # Send initial status
     emit('status_update', {
         'status': 'connected',
-        'message': 'Connected to Android Log Capturer'
+        'message': 'Connected to Log Capturer'
     })
     
     # Send current device status
-    device_connected, device_info = check_device_connection()
+    device_connected, device_info = check_device_connection(current_platform)
     emit('device_status', {
         'connected': device_connected,
         'devices': device_info,
         'message': f'Connected to {len(device_info)} device(s)' if device_connected else 'No devices connected',
-        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'platform': current_platform
     })
     
     # Send current settings
@@ -597,10 +664,11 @@ if __name__ == '__main__':
     current_endpoint = settings['endpoint']
     current_bulk_endpoint = settings['bulk_endpoint']
     current_mode = settings['mode']
+    current_platform = settings.get('platform', 'android')
     
-    print("🚀 Starting Android Log Capturer Web Application")
-    print("📱 Make sure your Android device is connected and USB debugging is enabled")
-    print("🌐 Open your browser and go to: http://localhost:5002")
+    print("🚀 Starting Log Capturer Web Application")
+    print("📱 Make sure your device is connected")
+    print("🌐 Open your browser and go to: http://localhost:7072")
     if settings['endpoint']:
         print(f"📡 Loaded saved realtime endpoint: {settings['endpoint']}")
     if settings['bulk_endpoint']:
